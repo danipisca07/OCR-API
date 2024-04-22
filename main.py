@@ -1,53 +1,34 @@
-import re
-import pytesseract
+from flask import Flask, request, jsonify
+import io
 from PIL import Image
+from utils.process_image import process_image 
 
-# Set the path to the tesseract executable if it's not in your PATH
-# Uncomment and adjust the path below if necessary
-# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Windows example
+app = Flask(__name__)
 
-# Load an image from disk
-image = Image.open("tabella_nutrizionale.jpg")
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
 
-# Use Tesseract to do OCR on the image
-text = pytesseract.image_to_string(image, config='--psm 6')
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+    
+    if file:
+        try:
+            # Read the file from the request as bytes in memory
+            image_bytes = file.read()
+            # Open the image directly from the bytes
+            image = Image.open(io.BytesIO(image_bytes))
+            
+            # Process the image using your OCR function
+            results = process_image(image)
+            return jsonify(results)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
-# Output lines for review
-lines = text.split('\n')
-for line in lines:
-    print(line)
+    return jsonify({"error": "File upload failed"}), 500
 
-# Define a regular expression pattern to match lines with nutrient information
-pattern = r'(\w+.*?)\s*([\d,]+)g'
-
-known_nutrients = [
-    "energia",
-    "calorie",
-    "saturi",
-    "grassi",
-    "carboidrati",
-    "zuccheri",
-    "fibre",
-    "proteine",
-    "sale"
-]
-
-# Extract nutrient information
-nutrients = {}
-for line in lines:
-    line = line.replace(" g "," ").replace("g "," ").replace(" g"," ")  # Normalize spacing around 'g'
-    for nutrient in known_nutrients:
-        # Create a dynamic pattern for each known nutrient
-        # The \b word boundary ensures that we match the whole word and not a substring
-        pattern = rf'\b{nutrient}\b\s*([\d,]+)'
-        match = re.search(pattern, line, re.IGNORECASE)
-        if match:
-            # Replace comma with dot for decimal
-            amount = match.group(1).replace(',', '.')
-            # We use the known nutrient from our array, ensuring consistency
-            nutrients[nutrient] = float(amount)
-            break  # Stop checking other nutrients if we've found a match
-
-# Print out the extracted nutrients
-for nutrient, amount in nutrients.items():
-    print(f"{nutrient}: {amount}")
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0')
